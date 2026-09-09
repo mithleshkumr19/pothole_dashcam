@@ -1,0 +1,59 @@
+# scripts/simulate_dashcam_feed.py
+"""
+Simulates a live MJPEG dashcam feed from a local video file.
+Your frontend or API can consume http://localhost:8090/feed
+"""
+import cv2
+import time
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
+
+VIDEO_PATH = "pothole_clip.mp4"  # Replace with your downloaded clip
+FPS = 15
+PORT = 8090
+
+class MJPEGHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path != "/feed":
+            self.send_error(404)
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+        self.end_headers()
+
+        cap = cv2.VideoCapture(VIDEO_PATH)
+        if not cap.isOpened():
+            print(f"[ERROR] Cannot open {VIDEO_PATH}")
+            return
+
+        try:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Loop
+                    continue
+
+                # Add live timestamp overlay
+                ts = time.strftime("%Y-%m-%d %H:%M:%S")
+                cv2.putText(frame, ts, (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+
+                _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                self.wfile.write(b"--frame\r\n")
+                self.wfile.write(b"Content-Type: image/jpeg\r\n\r\n")
+                self.wfile.write(buf.tobytes())
+                self.wfile.write(b"\r\n")
+                time.sleep(1 / FPS)
+        except BrokenPipeError:
+            pass
+        finally:
+            cap.release()
+
+    def log_message(self, fmt, *args):
+        pass  # Suppress logs
+
+if __name__ == "__main__":
+    server = HTTPServer(("0.0.0.0", PORT), MJPEGHandler)
+    print(f"[FEED] Dashcam MJPEG stream at http://localhost:{PORT}/feed")
+    server.serve_forever()
