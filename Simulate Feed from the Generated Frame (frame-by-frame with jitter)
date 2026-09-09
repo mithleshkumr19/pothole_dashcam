@@ -1,0 +1,66 @@
+# scripts/simulate_from_image.py
+"""
+Creates a simulated 'live' MJPEG feed from a single dashcam image.
+Adds random crop jitter + timestamp to simulate bus movement.
+"""
+import cv2
+import numpy as np
+import time
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+IMAGE_PATH = "dashcam_pothole_frame.jpg"  # The generated image
+FPS = 12
+PORT = 8090
+JITTER_PX = 15  # Simulated vibration
+
+class JitterFeedHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path != "/feed":
+            self.send_error(404)
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+        self.end_headers()
+
+        img = cv2.imread(IMAGE_PATH)
+        if img is None:
+            print(f"[ERROR] Cannot load {IMAGE_PATH}")
+            return
+
+        h, w = img.shape[:2]
+        # Pad image so we can crop with jitter
+        padded = cv2.copyMakeBorder(img, JITTER_PX, JITTER_PX, JITTER_PX, JITTER_PX,
+                                     cv2.BORDER_REFLECT)
+
+        try:
+            while True:
+                dx = np.random.randint(0, 2 * JITTER_PX)
+                dy = np.random.randint(0, 2 * JITTER_PX)
+                frame = padded[dy:dy+h, dx:dx+w].copy()
+
+                # Timestamp overlay
+                ts = time.strftime("%Y-%m-%d %H:%M:%S")
+                cv2.putText(frame, ts, (w - 340, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+
+                # Slight brightness variation
+                brightness = np.random.uniform(0.95, 1.05)
+                frame = np.clip(frame * brightness, 0, 255).astype(np.uint8)
+
+                _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                self.wfile.write(b"--frame\r\n")
+                self.wfile.write(b"Content-Type: image/jpeg\r\n\r\n")
+                self.wfile.write(buf.tobytes())
+                self.wfile.write(b"\r\n")
+                time.sleep(1 / FPS)
+        except BrokenPipeError:
+            pass
+
+    def log_message(self, fmt, *args):
+        pass
+
+if __name__ == "__main__":
+    server = HTTPServer(("0.0.0.0", PORT), JitterFeedHandler)
+    print(f"[FEED] Simulated dashcam stream at http://localhost:{PORT}/feed")
+    server.serve_forever()
