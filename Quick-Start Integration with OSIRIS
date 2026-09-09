@@ -1,0 +1,16 @@
+// src/app/api/dashcam/route.ts
+import { NextResponse } from 'next/server';
+
+const DASHCAM_FEED_URL = process.env.DASHCAM_FEED_URL || 'http://localhost:8090/feed';
+
+export async function GET() {
+  // Proxy the MJPEG stream from the Python feed simulator
+  const upstream = await fetch(DASHCAM_FEED_URL);
+
+  return new NextResponse(upstream.body, {
+    headers: {
+      'Content-Type': upstream.headers.get('Content-Type') || 'multipart/x-mixed-replace; boundary=frame',
+      'Cache-Control': 'no-cache',
+    },
+  });
+}
