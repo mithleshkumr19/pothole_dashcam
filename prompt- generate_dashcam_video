@@ -1,0 +1,36 @@
+import cv2
+import numpy as np
+import time
+IMAGE_PATH = r"C:\Users\mithl\.gemini\antigravity\brain\cf399225-2859-442c-9e88-99063c42cd9e\dashcam_pothole_frame_1788934700955.jpg"
+OUTPUT_PATH = r"c:\extraaaa\RoadGuard-AI-Progress\public\dashcam_pothole_clip.mp4"
+FPS = 24
+DURATION = 5
+JITTER_PX = 12
+img = cv2.imread(IMAGE_PATH)
+if img is None:
+    raise FileNotFoundError(f"Cannot load {IMAGE_PATH}")
+h, w = img.shape[:2]
+padded = cv2.copyMakeBorder(img, JITTER_PX, JITTER_PX, JITTER_PX, JITTER_PX, cv2.BORDER_REFLECT)
+fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+out = cv2.VideoWriter(OUTPUT_PATH, fourcc, FPS, (w, h))
+total_frames = FPS * DURATION
+base_time = time.time()
+for i in range(total_frames):
+    # Smooth sinusoidal jitter to simulate road vibration
+    t = i / FPS
+    dx = int(JITTER_PX + JITTER_PX * 0.8 * np.sin(2 * np.pi * 3.5 * t + np.random.uniform(-0.3, 0.3)))
+    dy = int(JITTER_PX + JITTER_PX * 0.6 * np.sin(2 * np.pi * 5.0 * t + np.random.uniform(-0.2, 0.2)))
+    dx = np.clip(dx, 0, 2 * JITTER_PX)
+    dy = np.clip(dy, 0, 2 * JITTER_PX)
+    frame = padded[dy:dy+h, dx:dx+w].copy()
+    # Slight brightness flicker
+    brightness = 1.0 + 0.03 * np.sin(2 * np.pi * 1.2 * t)
+    frame = np.clip(frame * brightness, 0, 255).astype(np.uint8)
+    # Timestamp overlay
+    ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(base_time + t))
+    cv2.putText(frame, ts, (w - 390, 35), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2, cv2.LINE_AA)
+    # "REC" indicator
+    if int(t * 2) % 2 == 0:
+        cv2.circle(frame, (30, 30), 10, (0, 0, 255), -1)
+        cv2.putText(frame, "REC", (50, 38), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
+    out.write(frame)
